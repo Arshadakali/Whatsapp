@@ -2,6 +2,9 @@
 declare(strict_types=1);
 
 // require_once __DIR__ . '/config.php';
+if (file_exists(__DIR__ . '/config.php')) {
+    require_once __DIR__ . '/config.php';
+}
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
@@ -234,7 +237,17 @@ try {
     $db_user = getenv('DB_USER') ?: null;
     $db_pass = getenv('DB_PASSWORD') ?: '';
 
-    if ($db_host && $db_name && $db_user && class_exists('PDO')) {
+    // Check if get_pdo function exists (from config.php)
+    if (function_exists('get_pdo')) {
+        try {
+            $pdo = get_pdo();
+        } catch (Throwable $e) {
+            $pdo = null;
+        }
+    }
+
+    // Fallback to manual connection if get_pdo failed or doesn't exist
+    if ($pdo === null && $db_host && $db_name && $db_user && class_exists('PDO')) {
         $dsn = "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4";
         $pdo = new PDO($dsn, $db_user, $db_pass, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,

@@ -71,14 +71,14 @@ function as_json_string($value): ?string
     return $encoded === false ? null : $encoded;
 }
 
-function db_fetch_all(PDO $pdo, string $sql, array $params = []): array
+function db_fetch_all($pdo, string $sql, array $params = []): array
 {
     $statement = $pdo->prepare($sql);
     $statement->execute($params);
     return $statement->fetchAll();
 }
 
-function db_fetch_one(PDO $pdo, string $sql, array $params = []): ?array
+function db_fetch_one($pdo, string $sql, array $params = []): ?array
 {
     $statement = $pdo->prepare($sql);
     $statement->execute($params);
@@ -86,7 +86,7 @@ function db_fetch_one(PDO $pdo, string $sql, array $params = []): ?array
     return $row === false ? null : $row;
 }
 
-function db_execute(PDO $pdo, string $sql, array $params = []): int
+function db_execute($pdo, string $sql, array $params = []): int
 {
     $statement = $pdo->prepare($sql);
     $statement->execute($params);
@@ -224,30 +224,33 @@ $method = $_SERVER['REQUEST_METHOD'];
 $path = route_path();
 $json = request_json();
 
+/** @var PDO|null $pdo */
+$pdo = null;
+
 try {
-    // Check if PDO class exists (standard PHP, but good to check in serverless)
-    if (!class_exists('PDO')) {
-        throw new RuntimeException('pdo_missing');
-    }
     // We will use environment variables for DB connection in Vercel
-    $pdo = null;
     $db_host = getenv('DB_HOST') ?: null;
     $db_name = getenv('DB_NAME') ?: null;
     $db_user = getenv('DB_USER') ?: null;
     $db_pass = getenv('DB_PASSWORD') ?: '';
 
-    if ($db_host && $db_name && $db_user) {
+    if ($db_host && $db_name && $db_user && class_exists('PDO')) {
         $dsn = "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4";
         $pdo = new PDO($dsn, $db_user, $db_pass, [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_EMULATE_PREPARES => false,
         ]);
-    } else {
-        throw new RuntimeException('database_disconnected');
     }
 } catch (Throwable $exception) {
+    // If DB connection fails, we will fall back to mock
+    $pdo = null;
+}
+
+// If no PDO connection, use mock API and EXIT
+if ($pdo === null) {
     handle_mock_api($method, $path, $json);
+    exit;
 }
 
 if ($method === 'GET') {

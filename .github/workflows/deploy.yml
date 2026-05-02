@@ -1,0 +1,81 @@
+name: Deploy
+
+# To use this workflow, you must set the following GitHub Secrets:
+# DEPLOY_HOST: The hostname or IP of your server
+# DEPLOY_USERNAME: The SSH username
+# DEPLOY_SSH_KEY: Your private SSH key (RSA/ED25519)
+# DEPLOY_TARGET_DIR: The absolute path on the server where the files should go (e.g., /var/www/html)
+#
+# Also, ensure backend/php/.env exists on your server with:
+# DB_HOST, DB_NAME, DB_USER, DB_PASSWORD
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Prepare release bundle
+        run: |
+          mkdir -p release
+          cp -r dist release/dist
+          cp -r backend release/backend
+          cp index.html release/index.html
+
+      - name: Skip deploy when server secrets are missing
+        if: ${{ secrets.DEPLOY_HOST == '' || secrets.DEPLOY_USERNAME == '' || secrets.DEPLOY_SSH_KEY == '' || secrets.DEPLOY_TARGET_DIR == '' }}
+        run: |
+          echo "Deployment skipped."
+          echo "Configure DEPLOY_HOST, DEPLOY_USERNAME, DEPLOY_SSH_KEY, and DEPLOY_TARGET_DIR to enable CD."
+
+      - name: Upload release bundle
+        if: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USERNAME != '' && secrets.DEPLOY_SSH_KEY != '' && secrets.DEPLOY_TARGET_DIR != '' }}
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: release/*
+          target: ${{ secrets.DEPLOY_TARGET_DIR }}
+          overwrite: true
+
+      - name: Run remote migrations
+        if: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USERNAME != '' && secrets.DEPLOY_SSH_KEY != '' && secrets.DEPLOY_TARGET_DIR != '' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd "${{ secrets.DEPLOY_TARGET_DIR }}/backend/php"
+            if [ -f ".env" ]; then
+              php migrate.php
+            else
+              echo "Skipping migrations because backend/php/.env is missing on the server."
+            fi

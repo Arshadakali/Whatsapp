@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/config.php';
+// require_once __DIR__ . '/config.php';
 
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
@@ -225,8 +225,28 @@ $path = route_path();
 $json = request_json();
 
 try {
-    $pdo = get_pdo();
-} catch (RuntimeException $exception) {
+    // Check if PDO class exists (standard PHP, but good to check in serverless)
+    if (!class_exists('PDO')) {
+        throw new RuntimeException('pdo_missing');
+    }
+    // We will use environment variables for DB connection in Vercel
+    $pdo = null;
+    $db_host = getenv('DB_HOST') ?: null;
+    $db_name = getenv('DB_NAME') ?: null;
+    $db_user = getenv('DB_USER') ?: null;
+    $db_pass = getenv('DB_PASSWORD') ?: '';
+
+    if ($db_host && $db_name && $db_user) {
+        $dsn = "mysql:host=$db_host;dbname=$db_name;charset=utf8mb4";
+        $pdo = new PDO($dsn, $db_user, $db_pass, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ]);
+    } else {
+        throw new RuntimeException('database_disconnected');
+    }
+} catch (Throwable $exception) {
     handle_mock_api($method, $path, $json);
 }
 
